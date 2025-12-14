@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Sparkles, Heart, MessageCircle, Upload, Image as ImageIcon, Video, ChevronDown } from 'lucide-react';
+import { Sparkles, Heart, MessageCircle, Upload, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { MagicMoment, CoreValue, Profile } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -60,7 +60,7 @@ export default function MagicMoments() {
         const fileExt = mediaFile.name.split('.').pop();
         const fileName = `${Date.now()}.${fileExt}`;
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from('magic-moments')
           .upload(fileName, mediaFile);
 
