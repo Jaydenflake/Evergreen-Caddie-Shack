@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { User, Mail, Phone, MapPin, Calendar, Award, TrendingUp, Users, Heart } from 'lucide-react';
+import { Mail, Phone, MapPin, Calendar, Award, TrendingUp, Users, Heart } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Profile as ProfileType, Nomination, CoreValue } from '../lib/supabase';
 
