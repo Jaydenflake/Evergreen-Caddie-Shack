@@ -62,7 +62,7 @@ export default function Signup() {
       // Hash password (simple base64 for now, should use bcrypt in production)
       const passwordHash = btoa(password);
 
-      const { data, error: rpcError } = await supabase.rpc('register_user', {
+      const { error: rpcError } = await supabase.rpc('register_user', {
         p_username: username,
         p_password_hash: passwordHash,
         p_first_name: firstName,
