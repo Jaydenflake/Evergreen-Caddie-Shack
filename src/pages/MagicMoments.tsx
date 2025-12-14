@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { Sparkles, Heart, MessageCircle, Upload, Image as ImageIcon, Video, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { MagicMoment, CoreValue, Profile } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function MagicMoments() {
+  const { user } = useAuth();
   const [moments, setMoments] = useState<MagicMoment[]>([]);
   const [showPostForm, setShowPostForm] = useState(false);
   const [teammates, setTeammates] = useState<Profile[]>([]);
@@ -16,9 +18,6 @@ export default function MagicMoments() {
   const [description, setDescription] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
 
-  // Mock current user
-  const currentUserId = '00000000-0000-0000-0000-000000000001';
-
   useEffect(() => {
     fetchData();
   }, []);
@@ -28,9 +27,9 @@ export default function MagicMoments() {
       const [momentsRes, teammatesRes, valuesRes] = await Promise.all([
         supabase
           .from('magic_moments')
-          .select('*, author:profiles!author_id(*), highlighted_teammate:profiles!highlighted_teammate_id(*), core_value:core_values(*)')
+          .select('*, author:profiles!author_id(*, club:clubs(*)), highlighted_teammate:profiles!highlighted_teammate_id(*, club:clubs(*)), core_value:core_values(*)')
           .order('created_at', { ascending: false }),
-        supabase.from('profiles').select('*').order('full_name'),
+        supabase.from('profiles').select('*, club:clubs(*)').order('full_name'),
         supabase.from('core_values').select('*').order('name'),
       ]);
 
@@ -46,7 +45,11 @@ export default function MagicMoments() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTeammate || !description.trim()) return;
+    if (!selectedTeammate || !description.trim() || !user) return;
+
+    // Get the highlighted teammate's club_id for the post
+    const highlightedTeammate = teammates.find(t => t.id === selectedTeammate);
+    if (!highlightedTeammate) return;
 
     try {
       let mediaUrl = null;
@@ -72,7 +75,8 @@ export default function MagicMoments() {
       }
 
       await supabase.from('magic_moments').insert({
-        author_id: currentUserId,
+        club_id: highlightedTeammate.club_id || user.club_id,
+        author_id: user.id,
         highlighted_teammate_id: selectedTeammate,
         core_value_id: selectedValue || null,
         description: description.trim(),
@@ -90,22 +94,24 @@ export default function MagicMoments() {
       // Refresh moments
       fetchData();
     } catch (error) {
-      console.error('Error posting magic moment:', error);
+      console.error('Error posting moment:', error);
     }
   };
 
   const toggleLike = async (momentId: string, hasLiked: boolean) => {
+    if (!user) return;
+
     try {
       if (hasLiked) {
         await supabase
           .from('magic_moment_likes')
           .delete()
           .eq('magic_moment_id', momentId)
-          .eq('user_id', currentUserId);
+          .eq('user_id', user.id);
       } else {
         await supabase.from('magic_moment_likes').insert({
           magic_moment_id: momentId,
-          user_id: currentUserId,
+          user_id: user.id,
         });
       }
       fetchData();
@@ -123,7 +129,7 @@ export default function MagicMoments() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
                 <Sparkles className="w-8 h-8 text-teal-400" />
-                Magic Moments
+                Creating Magic
               </h1>
               <p className="text-gray-600">Celebrate exceptional hospitality and recognize your teammates</p>
             </div>
@@ -139,7 +145,7 @@ export default function MagicMoments() {
         {/* Post Form */}
         {showPostForm && (
           <form onSubmit={handleSubmit} className="glass-strong rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Share a Magic Moment</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Share a Moment of Magic</h3>
 
             <div>
               <label className="block text-gray-600 text-sm font-medium mb-2">
@@ -155,7 +161,7 @@ export default function MagicMoments() {
                   <option value="">Select a teammate...</option>
                   {teammates.map((teammate) => (
                     <option key={teammate.id} value={teammate.id}>
-                      {teammate.full_name} - {teammate.role}
+                      {teammate.full_name} - {teammate.role} {teammate.club?.name ? `(${teammate.club.name})` : ''}
                     </option>
                   ))}
                 </select>
@@ -186,7 +192,7 @@ export default function MagicMoments() {
 
             <div>
               <label className="block text-gray-600 text-sm font-medium mb-2">
-                Describe the Magic Moment
+                Describe the Moment
               </label>
               <textarea
                 value={description}
@@ -224,7 +230,7 @@ export default function MagicMoments() {
                 type="submit"
                 className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 px-6 py-3 rounded-xl text-gray-900 font-medium shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all"
               >
-                Post Magic Moment
+                Post Moment
               </button>
               <button
                 type="button"
@@ -252,7 +258,7 @@ export default function MagicMoments() {
           ) : moments.length === 0 ? (
             <div className="glass-strong rounded-2xl p-12 text-center">
               <Sparkles className="w-16 h-16 text-emerald-600/30 mx-auto mb-4" />
-              <p className="text-gray-600/50 text-lg">No magic moments yet. Be the first to share!</p>
+              <p className="text-gray-600/50 text-lg">No moments yet. Be the first to share!</p>
             </div>
           ) : (
             moments.map((moment) => (
@@ -295,7 +301,7 @@ export default function MagicMoments() {
                 {moment.media_url && (
                   <div className="mb-4 rounded-xl overflow-hidden border border-emerald-200">
                     {moment.media_type === 'image' ? (
-                      <img src={moment.media_url} alt="Magic moment" className="w-full" />
+                      <img src={moment.media_url} alt="Moment of magic" className="w-full" />
                     ) : moment.media_type === 'video' ? (
                       <video src={moment.media_url} controls className="w-full" />
                     ) : null}

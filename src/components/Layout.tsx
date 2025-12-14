@@ -5,8 +5,10 @@ import {
   Sparkles,
   Award,
   Bell,
-  User
+  User,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -14,11 +16,12 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
+  const { user, signOut } = useAuth();
 
   const navItems = [
     { path: '/', icon: Home, label: 'Home' },
     { path: '/messages', icon: MessageSquare, label: 'Messages' },
-    { path: '/magic-moments', icon: Sparkles, label: 'Magic Moments' },
+    { path: '/magic-moments', icon: Sparkles, label: 'Creating Magic' },
     { path: '/nominate', icon: Award, label: 'Nominate' },
     { path: '/announcements', icon: Bell, label: 'Announcements' },
     { path: '/profile', icon: User, label: 'My Profile' },
@@ -72,8 +75,24 @@ export default function Layout({ children }: LayoutProps) {
           })}
         </nav>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-emerald-200">
+        {/* User Info & Sign Out */}
+        <div className="p-4 border-t border-emerald-200 space-y-3">
+          <div className="flex items-center gap-3 px-4 py-2 bg-emerald-50 rounded-xl">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-semibold text-sm">
+              {user?.full_name?.charAt(0) || 'U'}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 truncate">{user?.full_name}</p>
+              <p className="text-xs text-gray-600 truncate">@{user?.username}</p>
+            </div>
+          </div>
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-2 px-4 py-2 rounded-xl text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="font-medium text-sm">Sign Out</span>
+          </button>
           <p className="text-xs text-emerald-600/60 text-center font-medium">
             Relentless Hospitality
           </p>

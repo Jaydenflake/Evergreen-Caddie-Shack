@@ -8,20 +8,62 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- CORE TABLES
 -- =============================================
 
+-- Clubs table
+CREATE TABLE clubs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL UNIQUE,
+  location TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insert the initial clubs
+INSERT INTO clubs (id, name, location) VALUES
+  ('00000000-0000-0000-0000-000000000010', 'Blackthorn Club', 'Jonesborough, TN'),
+  ('00000000-0000-0000-0000-000000000020', 'Governors Towne Club', 'Acworth, GA');
+
+-- Departments table
+CREATE TABLE departments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insert the departments
+INSERT INTO departments (id, name, description) VALUES
+  ('00000000-0000-0000-0000-000000000100', 'Food & Beverage', 'Food and beverage operations'),
+  ('00000000-0000-0000-0000-000000000200', 'Golf', 'Golf operations and pro shop'),
+  ('00000000-0000-0000-0000-000000000300', 'Maintenance', 'Facility and grounds maintenance'),
+  ('00000000-0000-0000-0000-000000000400', 'Amenities', 'Club amenities and member services'),
+  ('00000000-0000-0000-0000-000000000500', 'Service Center', 'Central support services for all clubs');
+
 -- Users/Employees table
 CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email TEXT UNIQUE NOT NULL,
+  club_id UUID REFERENCES clubs(id) ON DELETE CASCADE,
+  department_id UUID NOT NULL REFERENCES departments(id) ON DELETE SET NULL,
+  username TEXT UNIQUE,
+  password_hash TEXT,
+  email TEXT,
   full_name TEXT NOT NULL,
   role TEXT NOT NULL,
-  department TEXT NOT NULL,
+  department TEXT NOT NULL, -- Legacy field, keeping for compatibility
   phone TEXT,
   location TEXT,
   avatar_url TEXT,
   join_date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT check_service_center_club CHECK (
+    (department_id = '00000000-0000-0000-0000-000000000500' AND club_id IS NULL) OR
+    (department_id != '00000000-0000-0000-0000-000000000500' AND club_id IS NOT NULL)
+  )
 );
+
+-- Create unique index on username
+CREATE UNIQUE INDEX idx_profiles_username ON profiles(username) WHERE username IS NOT NULL;
 
 -- Evergreen Core Values
 CREATE TABLE core_values (
@@ -48,6 +90,7 @@ INSERT INTO core_values (name, tagline, description, icon_name) VALUES
 -- Nominations table
 CREATE TABLE nominations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  club_id UUID NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   nominator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   nominee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   core_value_id UUID NOT NULL REFERENCES core_values(id) ON DELETE CASCADE,
@@ -83,6 +126,7 @@ INSERT INTO channels (name, display_name, department, description) VALUES
 -- Messages table
 CREATE TABLE messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  club_id UUID NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   channel_id UUID NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -103,12 +147,13 @@ CREATE TABLE channel_members (
 );
 
 -- =============================================
--- MAGIC MOMENTS (HOSPITALITY SPOTLIGHT)
+-- CREATING MAGIC (HOSPITALITY SPOTLIGHT)
 -- =============================================
 
--- Magic moments/spotlight posts
+-- Creating magic/spotlight posts
 CREATE TABLE magic_moments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  club_id UUID NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   author_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   highlighted_teammate_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   core_value_id UUID REFERENCES core_values(id) ON DELETE SET NULL,
@@ -121,7 +166,7 @@ CREATE TABLE magic_moments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Likes on magic moments
+-- Likes on creating magic posts
 CREATE TABLE magic_moment_likes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   magic_moment_id UUID NOT NULL REFERENCES magic_moments(id) ON DELETE CASCADE,
@@ -130,7 +175,7 @@ CREATE TABLE magic_moment_likes (
   UNIQUE(magic_moment_id, user_id)
 );
 
--- Comments on magic moments
+-- Comments on creating magic posts
 CREATE TABLE magic_moment_comments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   magic_moment_id UUID NOT NULL REFERENCES magic_moments(id) ON DELETE CASCADE,
@@ -147,6 +192,7 @@ CREATE TABLE magic_moment_comments (
 -- Announcements table
 CREATE TABLE announcements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  club_id UUID NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   author_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   content TEXT NOT NULL,
@@ -160,6 +206,14 @@ CREATE TABLE announcements (
 -- INDEXES FOR PERFORMANCE
 -- =============================================
 
+-- Club indexes
+CREATE INDEX idx_profiles_club ON profiles(club_id);
+CREATE INDEX idx_profiles_department ON profiles(department_id);
+CREATE INDEX idx_nominations_club ON nominations(club_id);
+CREATE INDEX idx_messages_club ON messages(club_id);
+CREATE INDEX idx_magic_moments_club ON magic_moments(club_id);
+CREATE INDEX idx_announcements_club ON announcements(club_id);
+
 -- Nominations indexes
 CREATE INDEX idx_nominations_nominator ON nominations(nominator_id);
 CREATE INDEX idx_nominations_nominee ON nominations(nominee_id);
@@ -171,7 +225,7 @@ CREATE INDEX idx_messages_channel ON messages(channel_id);
 CREATE INDEX idx_messages_user ON messages(user_id);
 CREATE INDEX idx_messages_created ON messages(created_at DESC);
 
--- Magic moments indexes
+-- Creating magic indexes
 CREATE INDEX idx_magic_moments_author ON magic_moments(author_id);
 CREATE INDEX idx_magic_moments_teammate ON magic_moments(highlighted_teammate_id);
 CREATE INDEX idx_magic_moments_created ON magic_moments(created_at DESC);
@@ -194,6 +248,12 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Apply trigger to relevant tables
+CREATE TRIGGER update_clubs_updated_at BEFORE UPDATE ON clubs
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_departments_updated_at BEFORE UPDATE ON departments
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -216,7 +276,7 @@ CREATE TRIGGER update_magic_moment_comments_updated_at BEFORE UPDATE ON magic_mo
 -- TRIGGERS FOR COUNTERS
 -- =============================================
 
--- Function to update magic moment likes count
+-- Function to update creating magic likes count
 CREATE OR REPLACE FUNCTION update_magic_moment_likes_count()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -229,7 +289,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to update magic moment comments count
+-- Function to update creating magic comments count
 CREATE OR REPLACE FUNCTION update_magic_moment_comments_count()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -256,6 +316,8 @@ CREATE TRIGGER magic_moment_comments_count_trigger
 -- =============================================
 
 -- Enable RLS on all tables
+ALTER TABLE clubs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nominations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channels ENABLE ROW LEVEL SECURITY;
@@ -267,43 +329,165 @@ ALTER TABLE magic_moment_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE core_values ENABLE ROW LEVEL SECURITY;
 
--- Profiles: All authenticated users can read, users can update their own profile
-CREATE POLICY "Profiles are viewable by everyone" ON profiles
+-- Helper function to get current user's club_id
+CREATE OR REPLACE FUNCTION get_user_club_id()
+RETURNS UUID AS $$
+BEGIN
+  RETURN (SELECT club_id FROM profiles WHERE id = auth.uid());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Helper function to check if user is Service Center
+CREATE OR REPLACE FUNCTION is_service_center_user()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (SELECT department_id = '00000000-0000-0000-0000-000000000500' FROM profiles WHERE id = auth.uid());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
+-- AUTHENTICATION FUNCTIONS
+-- =============================================
+
+-- Function to register new user
+CREATE OR REPLACE FUNCTION register_user(
+  p_username TEXT,
+  p_password_hash TEXT,
+  p_first_name TEXT,
+  p_last_name TEXT,
+  p_club_id UUID,
+  p_department_id UUID,
+  p_role TEXT DEFAULT 'Team Member'
+)
+RETURNS UUID AS $$
+DECLARE
+  v_user_id UUID;
+  v_full_name TEXT;
+BEGIN
+  -- Combine first and last name
+  v_full_name := p_first_name || ' ' || p_last_name;
+
+  -- Insert new profile
+  INSERT INTO profiles (
+    username,
+    password_hash,
+    full_name,
+    club_id,
+    department_id,
+    role,
+    department,
+    email
+  ) VALUES (
+    p_username,
+    p_password_hash,
+    v_full_name,
+    p_club_id,
+    p_department_id,
+    p_role,
+    (SELECT name FROM departments WHERE id = p_department_id),
+    NULL
+  )
+  RETURNING id INTO v_user_id;
+
+  RETURN v_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to authenticate user
+CREATE OR REPLACE FUNCTION authenticate_user(
+  p_username TEXT,
+  p_password_hash TEXT
+)
+RETURNS TABLE (
+  user_id UUID,
+  full_name TEXT,
+  club_id UUID,
+  department_id UUID,
+  role TEXT
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    id,
+    profiles.full_name,
+    profiles.club_id,
+    profiles.department_id,
+    profiles.role
+  FROM profiles
+  WHERE username = p_username
+    AND password_hash = p_password_hash;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =============================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- =============================================
+
+-- Clubs: All authenticated users can view all clubs
+CREATE POLICY "Clubs are viewable by everyone" ON clubs
   FOR SELECT USING (true);
+
+-- Departments: All authenticated users can view all departments
+CREATE POLICY "Departments are viewable by everyone" ON departments
+  FOR SELECT USING (true);
+
+-- Profiles: Users can see profiles from their club, Service Center sees all
+CREATE POLICY "Users can view profiles from their club or all if Service Center" ON profiles
+  FOR SELECT USING (
+    is_service_center_user() OR
+    club_id = get_user_club_id() OR
+    club_id IS NULL
+  );
 
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (auth.uid() = id);
+
+-- Allow users to create their own profile during signup
+CREATE POLICY "Users can create their own profile during signup" ON profiles
+  FOR INSERT WITH CHECK (true);
 
 -- Core values: Read-only for everyone
 CREATE POLICY "Core values are viewable by everyone" ON core_values
   FOR SELECT USING (true);
 
--- Nominations: Users can create, view all
-CREATE POLICY "Users can view all nominations" ON nominations
-  FOR SELECT USING (true);
+-- Nominations: Users can see nominations from their club, Service Center sees all
+CREATE POLICY "Users can view nominations from their club or all if Service Center" ON nominations
+  FOR SELECT USING (
+    is_service_center_user() OR
+    club_id = get_user_club_id()
+  );
 
-CREATE POLICY "Users can create nominations" ON nominations
-  FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can create nominations for their club" ON nominations
+  FOR INSERT WITH CHECK (
+    club_id = get_user_club_id() AND
+    NOT is_service_center_user()
+  );
 
-CREATE POLICY "Users can update their nominations" ON nominations
-  FOR UPDATE USING (nominator_id = auth.uid());
+CREATE POLICY "Users can update their own nominations" ON nominations
+  FOR UPDATE USING (nominator_id = auth.uid() AND club_id = get_user_club_id());
 
 -- Channels: Read-only for all authenticated users
 CREATE POLICY "Channels are viewable by everyone" ON channels
   FOR SELECT USING (true);
 
--- Messages: Users can view and create messages in their channels
-CREATE POLICY "Users can view all messages" ON messages
-  FOR SELECT USING (true);
+-- Messages: Users can see messages from their club, Service Center sees all
+CREATE POLICY "Users can view messages from their club or all if Service Center" ON messages
+  FOR SELECT USING (
+    is_service_center_user() OR
+    club_id = get_user_club_id()
+  );
 
-CREATE POLICY "Users can create messages" ON messages
-  FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can create messages for their club" ON messages
+  FOR INSERT WITH CHECK (
+    club_id = get_user_club_id() AND
+    NOT is_service_center_user()
+  );
 
 CREATE POLICY "Users can update their own messages" ON messages
-  FOR UPDATE USING (user_id = auth.uid());
+  FOR UPDATE USING (user_id = auth.uid() AND club_id = get_user_club_id());
 
 CREATE POLICY "Users can delete their own messages" ON messages
-  FOR DELETE USING (user_id = auth.uid());
+  FOR DELETE USING (user_id = auth.uid() AND club_id = get_user_club_id());
 
 -- Channel members: Users can view and join channels
 CREATE POLICY "Users can view channel members" ON channel_members
@@ -312,30 +496,36 @@ CREATE POLICY "Users can view channel members" ON channel_members
 CREATE POLICY "Users can join channels" ON channel_members
   FOR INSERT WITH CHECK (true);
 
--- Magic moments: All users can view, create, and interact
-CREATE POLICY "Magic moments are viewable by everyone" ON magic_moments
-  FOR SELECT USING (true);
+-- Creating magic: Users can see posts from their club, Service Center sees all
+CREATE POLICY "Users can view creating magic posts from their club or all if Service Center" ON magic_moments
+  FOR SELECT USING (
+    is_service_center_user() OR
+    club_id = get_user_club_id()
+  );
 
-CREATE POLICY "Users can create magic moments" ON magic_moments
-  FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can create creating magic posts for their club" ON magic_moments
+  FOR INSERT WITH CHECK (
+    club_id = get_user_club_id() AND
+    NOT is_service_center_user()
+  );
 
-CREATE POLICY "Users can update their magic moments" ON magic_moments
-  FOR UPDATE USING (author_id = auth.uid());
+CREATE POLICY "Users can update their own creating magic posts" ON magic_moments
+  FOR UPDATE USING (author_id = auth.uid() AND club_id = get_user_club_id());
 
-CREATE POLICY "Users can delete their magic moments" ON magic_moments
-  FOR DELETE USING (author_id = auth.uid());
+CREATE POLICY "Users can delete their own creating magic posts" ON magic_moments
+  FOR DELETE USING (author_id = auth.uid() AND club_id = get_user_club_id());
 
--- Magic moment likes: Users can like and unlike
+-- Creating magic likes: Users can like and unlike
 CREATE POLICY "Likes are viewable by everyone" ON magic_moment_likes
   FOR SELECT USING (true);
 
-CREATE POLICY "Users can like magic moments" ON magic_moment_likes
+CREATE POLICY "Users can like creating magic posts" ON magic_moment_likes
   FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Users can unlike magic moments" ON magic_moment_likes
+CREATE POLICY "Users can unlike creating magic posts" ON magic_moment_likes
   FOR DELETE USING (user_id = auth.uid());
 
--- Magic moment comments: Users can comment
+-- Creating magic comments: Users can comment
 CREATE POLICY "Comments are viewable by everyone" ON magic_moment_comments
   FOR SELECT USING (true);
 
@@ -348,18 +538,24 @@ CREATE POLICY "Users can update their comments" ON magic_moment_comments
 CREATE POLICY "Users can delete their comments" ON magic_moment_comments
   FOR DELETE USING (user_id = auth.uid());
 
--- Announcements: All can view, authenticated can create
-CREATE POLICY "Announcements are viewable by everyone" ON announcements
-  FOR SELECT USING (true);
+-- Announcements: Users can see announcements from their club, Service Center sees all
+CREATE POLICY "Users can view announcements from their club or all if Service Center" ON announcements
+  FOR SELECT USING (
+    is_service_center_user() OR
+    club_id = get_user_club_id()
+  );
 
-CREATE POLICY "Users can create announcements" ON announcements
-  FOR INSERT WITH CHECK (true);
+CREATE POLICY "Users can create announcements for their club" ON announcements
+  FOR INSERT WITH CHECK (
+    club_id = get_user_club_id() AND
+    NOT is_service_center_user()
+  );
 
-CREATE POLICY "Authors can update their announcements" ON announcements
-  FOR UPDATE USING (author_id = auth.uid());
+CREATE POLICY "Authors can update their own announcements" ON announcements
+  FOR UPDATE USING (author_id = auth.uid() AND club_id = get_user_club_id());
 
-CREATE POLICY "Authors can delete their announcements" ON announcements
-  FOR DELETE USING (author_id = auth.uid());
+CREATE POLICY "Authors can delete their own announcements" ON announcements
+  FOR DELETE USING (author_id = auth.uid() AND club_id = get_user_club_id());
 
 -- =============================================
 -- STORAGE BUCKETS (for images/videos)
@@ -378,14 +574,14 @@ CREATE POLICY "Avatar images are publicly accessible" ON storage.objects
 CREATE POLICY "Users can upload avatars" ON storage.objects
   FOR INSERT WITH CHECK (bucket_id = 'avatars');
 
--- Storage policies for magic moments
-CREATE POLICY "Magic moment media is publicly accessible" ON storage.objects
+-- Storage policies for creating magic
+CREATE POLICY "Creating magic media is publicly accessible" ON storage.objects
   FOR SELECT USING (bucket_id = 'magic-moments');
 
-CREATE POLICY "Users can upload magic moment media" ON storage.objects
+CREATE POLICY "Users can upload creating magic media" ON storage.objects
   FOR INSERT WITH CHECK (bucket_id = 'magic-moments');
 
-CREATE POLICY "Users can delete their magic moment media" ON storage.objects
+CREATE POLICY "Users can delete their creating magic media" ON storage.objects
   FOR DELETE USING (bucket_id = 'magic-moments' AND auth.uid()::text = (storage.foldername(name))[1]);
 
 -- Storage policies for message attachments
@@ -400,15 +596,16 @@ CREATE POLICY "Users can upload message attachments" ON storage.objects
 -- =============================================
 
 -- Sample profiles (you can add real employee data later)
-INSERT INTO profiles (id, email, full_name, role, department, phone, location) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'john.smith@evergreen.com', 'John Smith', 'General Manager', 'Clubhouse', '555-0101', 'Castle Rock, CO'),
-  ('00000000-0000-0000-0000-000000000002', 'sarah.johnson@evergreen.com', 'Sarah Johnson', 'Head Golf Pro', 'Golf Pro Shop', '555-0102', 'Castle Rock, CO'),
-  ('00000000-0000-0000-0000-000000000003', 'mike.williams@evergreen.com', 'Mike Williams', 'Executive Chef', 'Food & Beverage', '555-0103', 'Castle Rock, CO'),
-  ('00000000-0000-0000-0000-000000000004', 'emily.davis@evergreen.com', 'Emily Davis', 'Events Coordinator', 'Events', '555-0104', 'Castle Rock, CO'),
-  ('00000000-0000-0000-0000-000000000005', 'david.martinez@evergreen.com', 'David Martinez', 'Maintenance Supervisor', 'Maintenance', '555-0105', 'Castle Rock, CO');
+-- Note: password for all sample users is "password" (hashed as base64: cGFzc3dvcmQ=)
+INSERT INTO profiles (id, club_id, department_id, username, password_hash, email, full_name, role, department, phone, location) VALUES
+  ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000400', 'jsmith', 'cGFzc3dvcmQ=', 'john.smith@evergreen.com', 'John Smith', 'General Manager', 'Amenities', '555-0101', 'Jonesborough, TN'),
+  ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000200', 'sjohnson', 'cGFzc3dvcmQ=', 'sarah.johnson@evergreen.com', 'Sarah Johnson', 'Head Golf Pro', 'Golf', '555-0102', 'Jonesborough, TN'),
+  ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000100', 'mwilliams', 'cGFzc3dvcmQ=', 'mike.williams@evergreen.com', 'Mike Williams', 'Executive Chef', 'Food & Beverage', '555-0103', 'Jonesborough, TN'),
+  ('00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000400', 'edavis', 'cGFzc3dvcmQ=', 'emily.davis@evergreen.com', 'Emily Davis', 'Events Coordinator', 'Amenities', '555-0104', 'Jonesborough, TN'),
+  ('00000000-0000-0000-0000-000000000005', '00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000300', 'dmartinez', 'cGFzc3dvcmQ=', 'david.martinez@evergreen.com', 'David Martinez', 'Maintenance Supervisor', 'Maintenance', '555-0105', 'Jonesborough, TN');
 
 -- Sample announcements
-INSERT INTO announcements (author_id, title, content, category, is_pinned) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'Welcome to Evergreen!', 'We are thrilled to launch our new team communication platform. This is where we celebrate our values and connect as a team.', 'celebration', true),
-  ('00000000-0000-0000-0000-000000000001', 'Safety First Reminder', 'Please remember to follow all safety protocols, especially in the maintenance areas and kitchen.', 'urgent', false),
-  ('00000000-0000-0000-0000-000000000004', 'Upcoming Member Event - March 25th', 'Our annual Spring Golf Tournament is coming up! All hands on deck for this special event.', 'info', false);
+INSERT INTO announcements (club_id, author_id, title, content, category, is_pinned) VALUES
+  ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'Welcome to Evergreen!', 'We are thrilled to launch our new team communication platform. This is where we celebrate our values and connect as a team.', 'celebration', true),
+  ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'Safety First Reminder', 'Please remember to follow all safety protocols, especially in the maintenance areas and kitchen.', 'urgent', false),
+  ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000004', 'Upcoming Member Event - March 25th', 'Our annual Spring Golf Tournament is coming up! All hands on deck for this special event.', 'info', false);
