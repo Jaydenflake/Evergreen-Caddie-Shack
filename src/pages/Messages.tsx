@@ -2,17 +2,16 @@ import { useEffect, useState } from 'react';
 import { Search, Hash, Send, Paperclip, Smile } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Channel, Message } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Messages() {
+  const { user } = useAuth();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-
-  // Mock current user - in production this would come from auth context
-  const currentUserId = '00000000-0000-0000-0000-000000000001';
 
   useEffect(() => {
     fetchChannels();
@@ -80,12 +79,13 @@ export default function Messages() {
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedChannel) return;
+    if (!newMessage.trim() || !selectedChannel || !user) return;
 
     try {
       await supabase.from('messages').insert({
+        club_id: user.club_id,
         channel_id: selectedChannel.id,
-        user_id: currentUserId,
+        user_id: user.id,
         content: newMessage.trim(),
       });
 

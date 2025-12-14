@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { User, Mail, Phone, MapPin, Calendar, Award, TrendingUp, Users, Heart } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Profile as ProfileType, Nomination, CoreValue } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Profile() {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<ProfileType | null>(null);
   const [nominations, setNominations] = useState<Nomination[]>([]);
   const [coreValues, setCoreValues] = useState<CoreValue[]>([]);
@@ -15,34 +17,33 @@ export default function Profile() {
   });
   const [loading, setLoading] = useState(true);
 
-  // Mock current user
-  const currentUserId = '00000000-0000-0000-0000-000000000001';
-
   useEffect(() => {
     fetchProfileData();
   }, []);
 
   const fetchProfileData = async () => {
+    if (!user) return;
+
     try {
       // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('*')
-        .eq('id', currentUserId)
+        .select('*, club:clubs(*), department_obj:departments(*)')
+        .eq('id', user.id)
         .single();
 
       // Fetch nominations received
       const { data: receivedNominations } = await supabase
         .from('nominations')
         .select('*, nominator:profiles!nominator_id(*), core_value:core_values(*)')
-        .eq('nominee_id', currentUserId)
+        .eq('nominee_id', user.id)
         .order('created_at', { ascending: false });
 
       // Fetch nominations given
       const { data: givenNominations } = await supabase
         .from('nominations')
         .select('id')
-        .eq('nominator_id', currentUserId);
+        .eq('nominator_id', user.id);
 
       // Fetch core values
       const { data: valuesData } = await supabase

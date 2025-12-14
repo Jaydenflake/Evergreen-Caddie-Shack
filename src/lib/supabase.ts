@@ -10,18 +10,40 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Database types for TypeScript
+export interface Club {
+  id: string;
+  name: string;
+  location?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
-  email: string;
+  club_id: string | null; // null for Service Center employees
+  department_id: string;
+  username?: string;
+  password_hash?: string;
+  email?: string;
   full_name: string;
   role: string;
-  department: string;
+  department: string; // Legacy field, will be removed later
   phone?: string;
   location?: string;
   avatar_url?: string;
   join_date: string;
   created_at: string;
   updated_at: string;
+  club?: Club;
+  department_obj?: Department;
 }
 
 export interface CoreValue {
@@ -35,6 +57,7 @@ export interface CoreValue {
 
 export interface Nomination {
   id: string;
+  club_id: string;
   nominator_id: string;
   nominee_id: string;
   core_value_id: string;
@@ -45,6 +68,7 @@ export interface Nomination {
   nominator?: Profile;
   nominee?: Profile;
   core_value?: CoreValue;
+  club?: Club;
 }
 
 export interface Channel {
@@ -58,6 +82,7 @@ export interface Channel {
 
 export interface Message {
   id: string;
+  club_id: string;
   channel_id: string;
   user_id: string;
   content: string;
@@ -66,10 +91,12 @@ export interface Message {
   created_at: string;
   updated_at: string;
   user?: Profile;
+  club?: Club;
 }
 
 export interface MagicMoment {
   id: string;
+  club_id: string;
   author_id: string;
   highlighted_teammate_id: string;
   core_value_id?: string;
@@ -83,6 +110,7 @@ export interface MagicMoment {
   author?: Profile;
   highlighted_teammate?: Profile;
   core_value?: CoreValue;
+  club?: Club;
 }
 
 export interface MagicMomentLike {
@@ -104,6 +132,7 @@ export interface MagicMomentComment {
 
 export interface Announcement {
   id: string;
+  club_id: string;
   author_id: string;
   title: string;
   content: string;
@@ -112,4 +141,5 @@ export interface Announcement {
   created_at: string;
   updated_at: string;
   author?: Profile;
+  club?: Club;
 }

@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { Award, ChevronDown, CheckCircle, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Profile, CoreValue } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Nominate() {
+  const { user } = useAuth();
   const [teammates, setTeammates] = useState<Profile[]>([]);
   const [coreValues, setCoreValues] = useState<CoreValue[]>([]);
   const [selectedTeammate, setSelectedTeammate] = useState('');
@@ -13,9 +15,6 @@ export default function Nominate() {
   const [showValuesModal, setShowValuesModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Mock current user
-  const currentUserId = '00000000-0000-0000-0000-000000000001';
-
   useEffect(() => {
     fetchData();
   }, []);
@@ -23,7 +22,7 @@ export default function Nominate() {
   const fetchData = async () => {
     try {
       const [teammatesRes, valuesRes] = await Promise.all([
-        supabase.from('profiles').select('*').order('full_name'),
+        supabase.from('profiles').select('*, club:clubs(*)').order('full_name'),
         supabase.from('core_values').select('*').order('name'),
       ]);
 
@@ -39,9 +38,16 @@ export default function Nominate() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!user) return;
+
+    // Get the nominee's club_id for the nomination
+    const nominee = teammates.find(t => t.id === selectedTeammate);
+    if (!nominee) return;
+
     try {
       await supabase.from('nominations').insert({
-        nominator_id: currentUserId,
+        club_id: nominee.club_id || user.club_id,
+        nominator_id: user.id,
         nominee_id: selectedTeammate,
         core_value_id: selectedValue,
         description: description.trim(),
@@ -115,10 +121,10 @@ export default function Nominate() {
               >
                 <option value="">Choose a teammate to nominate...</option>
                 {teammates
-                  .filter((t) => t.id !== currentUserId)
+                  .filter((t) => t.id !== user?.id)
                   .map((teammate) => (
                     <option key={teammate.id} value={teammate.id}>
-                      {teammate.full_name} - {teammate.role}
+                      {teammate.full_name} - {teammate.role} {teammate.club?.name ? `(${teammate.club.name})` : ''}
                     </option>
                   ))}
               </select>
@@ -157,7 +163,7 @@ export default function Nominate() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe how this teammate demonstrated this core value. Be specific about what they did and the impact it had..."
               rows={6}
-              className="w-full bg-emerald-50 border border-emerald-300 border border-emerald-200 rounded-xl px-4 py-3 text-gray-900 placeholder-emerald-300/50 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              className="w-full bg-emerald-50 border border-emerald-300 border border-emerald-200 rounded-xl px-4 py-3 text-gray-900 placeholder-emerald-600/70 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
               required
             />
             <p className="text-gray-600/50 text-sm mt-2">

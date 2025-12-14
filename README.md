@@ -17,9 +17,9 @@ A premium social media-style platform for team communication, recognition, and c
 - Clean, modern chat interface
 - Channels: General, Clubhouse, Golf Pro Shop, Food & Beverage, Maintenance, Events
 
-### ✨ Magic Moments (Hospitality Spotlight)
+### ✨ Creating Magic (Hospitality Spotlight)
 - Social feed for celebrating exceptional hospitality
-- Highlight teammates who create magic moments for members
+- Highlight teammates who create moments of magic for members
 - Associate recognitions with Evergreen core values
 - Support for images and videos
 - Like and comment on posts
