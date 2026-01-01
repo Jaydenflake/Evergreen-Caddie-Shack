@@ -6,7 +6,9 @@ import {
   Award,
   Bell,
   User,
-  LogOut
+  LogOut,
+  Shield,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -25,6 +27,11 @@ export default function Layout({ children }: LayoutProps) {
     { path: '/nominate', icon: Award, label: 'Nominate' },
     { path: '/announcements', icon: Bell, label: 'Announcements' },
     { path: '/profile', icon: User, label: 'My Profile' },
+  ];
+
+  const adminNavItems = [
+    { path: '/admin/nominations', icon: Shield, label: 'Nominations' },
+    { path: '/admin/settings', icon: Settings, label: 'Admin Settings' },
   ];
 
   const isActive = (path: string) => {
@@ -53,7 +60,7 @@ export default function Layout({ children }: LayoutProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -73,6 +80,36 @@ export default function Layout({ children }: LayoutProps) {
               </Link>
             );
           })}
+
+          {/* Admin Section */}
+          {user?.is_admin && (
+            <>
+              <div className="pt-4 pb-2 px-4">
+                <div className="text-xs font-semibold text-emerald-600/70 uppercase tracking-wider">
+                  Admin
+                </div>
+              </div>
+              {adminNavItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.path);
+
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+                      active
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg shadow-purple-500/30'
+                        : 'text-gray-700 hover:bg-purple-50 hover:text-purple-700'
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* User Info & Sign Out */}

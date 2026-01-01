@@ -54,6 +54,7 @@ export interface Profile {
   phone?: string;
   location?: string;
   avatar_url?: string;
+  is_admin: boolean;
   join_date: string;
   created_at: string;
   updated_at: string;

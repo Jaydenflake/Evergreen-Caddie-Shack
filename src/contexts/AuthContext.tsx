@@ -9,6 +9,7 @@ interface AuthUser {
   club_id: string | null;
   department_id: string;
   role: string;
+  is_admin: boolean;
 }
 
 interface AuthContextType {
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         club_id: data[0].club_id,
         department_id: data[0].department_id,
         role: data[0].role,
+        is_admin: data[0].is_admin || false,
       };
 
       setUser(userData);
