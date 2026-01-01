@@ -20,7 +20,8 @@ CREATE TABLE clubs (
 -- Insert the initial clubs
 INSERT INTO clubs (id, name, location) VALUES
   ('00000000-0000-0000-0000-000000000010', 'Blackthorn Club', 'Jonesborough, TN'),
-  ('00000000-0000-0000-0000-000000000020', 'Governors Towne Club', 'Acworth, GA');
+  ('00000000-0000-0000-0000-000000000020', 'Governors Towne Club', 'Acworth, GA'),
+  ('00000000-0000-0000-0000-000000000030', 'Service Center', 'Corporate');
 
 -- Departments table
 CREATE TABLE departments (
@@ -69,6 +70,7 @@ CREATE TABLE profiles (
   phone TEXT,
   location TEXT,
   avatar_url TEXT,
+  is_admin BOOLEAN DEFAULT FALSE,
   join_date DATE DEFAULT CURRENT_DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -80,6 +82,9 @@ CREATE TABLE profiles (
 
 -- Create unique index on username
 CREATE UNIQUE INDEX idx_profiles_username ON profiles(username) WHERE username IS NOT NULL;
+
+-- Create index for admin lookups
+CREATE INDEX idx_profiles_is_admin ON profiles(is_admin) WHERE is_admin = TRUE;
 
 -- Evergreen Core Values
 CREATE TABLE core_values (
@@ -378,6 +383,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Helper function to check if user is admin
+CREATE OR REPLACE FUNCTION is_admin_user()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN (SELECT is_admin FROM profiles WHERE id = auth.uid());
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- =============================================
 -- AUTHENTICATION FUNCTIONS
 -- =============================================
@@ -436,7 +449,8 @@ RETURNS TABLE (
   full_name TEXT,
   club_id UUID,
   department_id UUID,
-  role TEXT
+  role TEXT,
+  is_admin BOOLEAN
 ) AS $$
 BEGIN
   RETURN QUERY
@@ -445,7 +459,8 @@ BEGIN
     profiles.full_name,
     profiles.club_id,
     profiles.department_id,
-    profiles.role
+    profiles.role,
+    profiles.is_admin
   FROM profiles
   WHERE username = p_username
     AND password_hash = p_password_hash;
@@ -537,16 +552,23 @@ CREATE POLICY "Only admins can modify employees" ON employees
     )
   );
 
--- Profiles: Users can see profiles from their club, Service Center sees all
-CREATE POLICY "Users can view profiles from their club or all if Service Center" ON profiles
-  FOR SELECT USING (
-    is_service_center_user() OR
-    club_id = get_user_club_id() OR
-    club_id IS NULL
-  );
+-- Profiles: Allow all authenticated users to read (custom auth doesn't set auth.uid())
+CREATE POLICY "Allow all authenticated users to read profiles" ON profiles
+  FOR SELECT USING (true);
 
 CREATE POLICY "Users can update own profile" ON profiles
   FOR UPDATE USING (auth.uid() = id);
+
+-- Allow admins to update admin status (but not their own)
+CREATE POLICY "Admins can update admin status" ON profiles
+  FOR UPDATE USING (
+    is_admin_user() AND
+    auth.uid() != id
+  )
+  WITH CHECK (
+    is_admin_user() AND
+    auth.uid() != id
+  );
 
 -- Allow users to create their own profile during signup
 CREATE POLICY "Users can create their own profile during signup" ON profiles
@@ -556,16 +578,13 @@ CREATE POLICY "Users can create their own profile during signup" ON profiles
 CREATE POLICY "Core values are viewable by everyone" ON core_values
   FOR SELECT USING (true);
 
--- Nominations: Users can see nominations from their club, Service Center sees all
-CREATE POLICY "Users can view nominations from their club or all if Service Center" ON nominations
-  FOR SELECT USING (
-    is_service_center_user() OR
-    club_id = get_user_club_id()
-  );
+-- Nominations: Allow all authenticated users to read (custom auth doesn't set auth.uid())
+CREATE POLICY "Allow all authenticated users to read nominations" ON nominations
+  FOR SELECT USING (true);
 
 -- Allow all authenticated users to insert nominations
 CREATE POLICY "Users can create nominations" ON nominations
-  FOR INSERT WITH CHECK (auth.uid() = nominator_id);
+  FOR INSERT WITH CHECK (true);
 
 CREATE POLICY "Users can update their own nominations" ON nominations
   FOR UPDATE USING (nominator_id = auth.uid() AND club_id = get_user_club_id());

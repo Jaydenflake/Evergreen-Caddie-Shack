@@ -9,6 +9,8 @@ import Announcements from './pages/Announcements';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import AdminNominations from './pages/AdminNominations';
+import AdminSettings from './pages/AdminSettings';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -96,6 +98,26 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <Profile />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/nominations"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AdminNominations />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <AdminSettings />
             </Layout>
           </ProtectedRoute>
         }
