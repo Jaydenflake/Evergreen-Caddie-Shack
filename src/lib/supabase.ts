@@ -76,7 +76,7 @@ export interface Nomination {
   nominator_id: string;
   nominee_id: string; // Employee name (not a UUID)
   core_value_id: string;
-  description: string;
+  description?: string; // Optional description
   status: 'pending' | 'approved' | 'awarded';
   created_at: string;
   updated_at: string;
