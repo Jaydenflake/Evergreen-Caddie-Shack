@@ -125,7 +125,7 @@ export default function Nominate() {
         nominator_id: user.id,
         nominee_id: employee.full_name, // Store employee name as nominee_id
         core_value_id: selectedValue,
-        description: description.trim(),
+        description: description.trim() || null, // NULL if empty
       });
 
       if (error) {
@@ -346,16 +346,15 @@ export default function Nominate() {
               placeholder="Describe how this teammate demonstrated this core value. Be specific about what they did and the impact it had..."
               rows={6}
               className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-gray-900 placeholder-emerald-600/70 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
-              required
             />
             <p className="text-gray-600/50 text-sm mt-2">
-              Minimum 50 characters. Be descriptive!
+              Optional - Add details about why you're nominating this teammate
             </p>
           </div>
 
           <button
             type="submit"
-            disabled={loading || submitting || description.length < 50}
+            disabled={loading || submitting}
             className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 px-8 py-4 rounded-2xl text-gray-900 text-lg font-semibold shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? 'Submitting...' : 'Submit Nomination'}

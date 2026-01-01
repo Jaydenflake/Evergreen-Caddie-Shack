@@ -110,7 +110,7 @@ CREATE TABLE nominations (
   nominator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   nominee_id TEXT NOT NULL, -- Employee name from employees table
   core_value_id UUID NOT NULL REFERENCES core_values(id) ON DELETE CASCADE,
-  description TEXT NOT NULL,
+  description TEXT, -- Optional description
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'awarded')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -563,11 +563,9 @@ CREATE POLICY "Users can view nominations from their club or all if Service Cent
     club_id = get_user_club_id()
   );
 
-CREATE POLICY "Users can create nominations for their club" ON nominations
-  FOR INSERT WITH CHECK (
-    club_id = get_user_club_id() AND
-    NOT is_service_center_user()
-  );
+-- Allow all authenticated users to insert nominations
+CREATE POLICY "Users can create nominations" ON nominations
+  FOR INSERT WITH CHECK (auth.uid() = nominator_id);
 
 CREATE POLICY "Users can update their own nominations" ON nominations
   FOR UPDATE USING (nominator_id = auth.uid() AND club_id = get_user_club_id());
