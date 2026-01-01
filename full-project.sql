@@ -39,6 +39,22 @@ INSERT INTO departments (id, name, description) VALUES
   ('00000000-0000-0000-0000-000000000400', 'Amenities', 'Club amenities and member services'),
   ('00000000-0000-0000-0000-000000000500', 'Service Center', 'Central support services for all clubs');
 
+-- Employees table (validated employee names from SFTP CSV)
+CREATE TABLE employees (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  company_title TEXT,
+  department_title TEXT,
+  job_title TEXT,
+  club TEXT, -- Computed from company_title
+  department TEXT, -- Computed from department_title
+  last_synced_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Users/Employees table
 CREATE TABLE profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -92,7 +108,7 @@ CREATE TABLE nominations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   club_id UUID NOT NULL REFERENCES clubs(id) ON DELETE CASCADE,
   nominator_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  nominee_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  nominee_id TEXT NOT NULL, -- Employee name from employees table
   core_value_id UUID NOT NULL REFERENCES core_values(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'awarded')),
@@ -214,6 +230,13 @@ CREATE INDEX idx_messages_club ON messages(club_id);
 CREATE INDEX idx_magic_moments_club ON magic_moments(club_id);
 CREATE INDEX idx_announcements_club ON announcements(club_id);
 
+-- Employee indexes
+CREATE INDEX idx_employees_full_name ON employees(full_name);
+CREATE INDEX idx_employees_last_name ON employees(last_name);
+CREATE INDEX idx_employees_department_title ON employees(department_title);
+CREATE INDEX idx_employees_club ON employees(club);
+CREATE INDEX idx_employees_department ON employees(department);
+
 -- Nominations indexes
 CREATE INDEX idx_nominations_nominator ON nominations(nominator_id);
 CREATE INDEX idx_nominations_nominee ON nominations(nominee_id);
@@ -272,6 +295,15 @@ CREATE TRIGGER update_announcements_updated_at BEFORE UPDATE ON announcements
 CREATE TRIGGER update_magic_moment_comments_updated_at BEFORE UPDATE ON magic_moment_comments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_employees_updated_at BEFORE UPDATE ON employees
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger to auto-populate club and department on insert/update
+CREATE TRIGGER employees_populate_club_department
+  BEFORE INSERT OR UPDATE OF company_title, department_title ON employees
+  FOR EACH ROW
+  EXECUTE FUNCTION populate_employee_club_department();
+
 -- =============================================
 -- TRIGGERS FOR COUNTERS
 -- =============================================
@@ -318,6 +350,7 @@ CREATE TRIGGER magic_moment_comments_count_trigger
 -- Enable RLS on all tables
 ALTER TABLE clubs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE nominations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE channels ENABLE ROW LEVEL SECURITY;
@@ -420,6 +453,65 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- =============================================
+-- EMPLOYEE DATA CLEANING FUNCTIONS
+-- =============================================
+
+-- Function to extract clean club name from company_title
+-- Rules:
+--   Contains "Governors" -> "Governors Towne Club"
+--   Contains "Blackthorn" -> "Blackthorn Club"
+--   Otherwise -> "Service Center"
+CREATE OR REPLACE FUNCTION extract_club_name(company_title TEXT)
+RETURNS TEXT AS $$
+BEGIN
+  IF company_title IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  -- Check for Governors
+  IF company_title ~* 'governors' THEN
+    RETURN 'Governors Towne Club';
+  END IF;
+
+  -- Check for Blackthorn
+  IF company_title ~* 'blackthorn' THEN
+    RETURN 'Blackthorn Club';
+  END IF;
+
+  -- Everything else is Service Center
+  RETURN 'Service Center';
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Function to extract clean department name from department_title
+CREATE OR REPLACE FUNCTION extract_department_name(department_title TEXT)
+RETURNS TEXT AS $$
+BEGIN
+  IF department_title IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  -- Remove leading numbers and space (e.g., "30 ", "20 ", "11 ")
+  department_title := regexp_replace(department_title, '^\d+\s+', '');
+
+  -- Trim whitespace
+  department_title := trim(department_title);
+
+  RETURN department_title;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Function to populate club and department columns
+CREATE OR REPLACE FUNCTION populate_employee_club_department()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.club := extract_club_name(NEW.company_title);
+  NEW.department := extract_department_name(NEW.department_title);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- =============================================
 
@@ -430,6 +522,20 @@ CREATE POLICY "Clubs are viewable by everyone" ON clubs
 -- Departments: All authenticated users can view all departments
 CREATE POLICY "Departments are viewable by everyone" ON departments
   FOR SELECT USING (true);
+
+-- Employees: All authenticated users can read employees
+CREATE POLICY "Anyone can read employees" ON employees
+  FOR SELECT USING (true);
+
+-- Employees: Only admins can modify employees
+CREATE POLICY "Only admins can modify employees" ON employees
+  FOR ALL USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = auth.uid()
+      AND profiles.role IN ('Admin', 'General Manager')
+    )
+  );
 
 -- Profiles: Users can see profiles from their club, Service Center sees all
 CREATE POLICY "Users can view profiles from their club or all if Service Center" ON profiles

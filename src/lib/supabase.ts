@@ -26,6 +26,21 @@ export interface Department {
   updated_at: string;
 }
 
+export interface Employee {
+  id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  company_title?: string;
+  department_title?: string;
+  job_title?: string;
+  club?: string; // Computed from company_title
+  department?: string; // Computed from department_title
+  last_synced_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Profile {
   id: string;
   club_id: string | null; // null for Service Center employees
@@ -59,14 +74,13 @@ export interface Nomination {
   id: string;
   club_id: string;
   nominator_id: string;
-  nominee_id: string;
+  nominee_id: string; // Employee name (not a UUID)
   core_value_id: string;
   description: string;
   status: 'pending' | 'approved' | 'awarded';
   created_at: string;
   updated_at: string;
   nominator?: Profile;
-  nominee?: Profile;
   core_value?: CoreValue;
   club?: Club;
 }

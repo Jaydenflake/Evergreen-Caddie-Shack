@@ -1,19 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Award, ChevronDown, CheckCircle, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Profile, CoreValue } from '../lib/supabase';
+import type { Club, CoreValue, Employee } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Nominate() {
   const { user } = useAuth();
-  const [teammates, setTeammates] = useState<Profile[]>([]);
+  const [clubs, setClubs] = useState<Club[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [coreValues, setCoreValues] = useState<CoreValue[]>([]);
-  const [selectedTeammate, setSelectedTeammate] = useState('');
+
+  // Form state
+  const [selectedClub, setSelectedClub] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState('');
   const [selectedValue, setSelectedValue] = useState('');
   const [description, setDescription] = useState('');
+
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [showValuesModal, setShowValuesModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -21,12 +30,14 @@ export default function Nominate() {
 
   const fetchData = async () => {
     try {
-      const [teammatesRes, valuesRes] = await Promise.all([
-        supabase.from('profiles').select('*, club:clubs(*)').order('full_name'),
+      const [clubsRes, employeesRes, valuesRes] = await Promise.all([
+        supabase.from('clubs').select('*').order('name'),
+        supabase.from('employees').select('*').order('full_name'),
         supabase.from('core_values').select('*').order('name'),
       ]);
 
-      if (teammatesRes.data) setTeammates(teammatesRes.data);
+      if (clubsRes.data) setClubs(clubsRes.data);
+      if (employeesRes.data) setEmployees(employeesRes.data);
       if (valuesRes.data) setCoreValues(valuesRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -35,35 +46,128 @@ export default function Nominate() {
     }
   };
 
+  // Get unique clubs from all employees
+  const availableClubs = useMemo(() => {
+    const clubsSet = new Set<string>();
+    employees.forEach(emp => {
+      if (emp.club) {
+        clubsSet.add(emp.club);
+      }
+    });
+    return Array.from(clubsSet).sort();
+  }, [employees]);
+
+  // Get departments available for selected club
+  const availableDepartments = useMemo(() => {
+    if (!selectedClub) return [];
+
+    const depts = new Set<string>();
+    employees.forEach(emp => {
+      // Filter by the selected club
+      if (emp.club === selectedClub && emp.department) {
+        depts.add(emp.department);
+      }
+    });
+    return Array.from(depts).sort();
+  }, [employees, selectedClub]);
+
+  // Filter employees by selected club and department
+  const filteredEmployees = useMemo(() => {
+    let filtered = employees;
+
+    // Filter by selected club
+    if (selectedClub) {
+      filtered = filtered.filter(emp => emp.club === selectedClub);
+    }
+
+    // Filter by selected department
+    if (selectedDepartment) {
+      filtered = filtered.filter(emp => emp.department === selectedDepartment);
+    }
+
+    return filtered;
+  }, [employees, selectedClub, selectedDepartment]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!user) return;
+    if (!user) {
+      setErrorMessage('You must be logged in to submit a nomination');
+      setShowError(true);
+      setTimeout(() => setShowError(false), 5000);
+      return;
+    }
 
-    // Get the nominee's club_id for the nomination
-    const nominee = teammates.find(t => t.id === selectedTeammate);
-    if (!nominee) return;
+    setSubmitting(true);
 
     try {
-      await supabase.from('nominations').insert({
-        club_id: nominee.club_id || user.club_id,
+      // Find the selected employee details
+      const employee = employees.find(e => e.id === selectedEmployee);
+
+      if (!employee) {
+        setErrorMessage('Selected employee not found');
+        setShowError(true);
+        setTimeout(() => setShowError(false), 5000);
+        setSubmitting(false);
+        return;
+      }
+
+      // Find the club ID from the selected club name
+      // Match the club name from employees to the clubs table
+      const club = clubs.find(c =>
+        c.name.toLowerCase().includes(selectedClub.toLowerCase()) ||
+        selectedClub.toLowerCase().includes(c.name.toLowerCase())
+      );
+      const clubId = club?.id || user.club_id;
+
+      const { error } = await supabase.from('nominations').insert({
+        club_id: clubId,
         nominator_id: user.id,
-        nominee_id: selectedTeammate,
+        nominee_id: employee.full_name, // Store employee name as nominee_id
         core_value_id: selectedValue,
         description: description.trim(),
       });
+
+      if (error) {
+        console.error('Supabase error:', error);
+        setErrorMessage(`Failed to submit nomination: ${error.message}`);
+        setShowError(true);
+        setTimeout(() => setShowError(false), 5000);
+        setSubmitting(false);
+        return;
+      }
 
       // Show success message
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 5000);
 
       // Reset form
-      setSelectedTeammate('');
+      setSelectedClub('');
+      setSelectedDepartment('');
+      setSelectedEmployee('');
       setSelectedValue('');
       setDescription('');
     } catch (error) {
       console.error('Error submitting nomination:', error);
+      setErrorMessage('An unexpected error occurred. Please try again.');
+      setShowError(true);
+      setTimeout(() => setShowError(false), 5000);
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  // Reset department and employee when club changes
+  const handleClubChange = (clubId: string) => {
+    setSelectedClub(clubId);
+    setSelectedDepartment('');
+    setSelectedEmployee('');
+  };
+
+  // Reset employee when department changes
+  const handleDepartmentChange = (department: string) => {
+    setSelectedDepartment(department);
+    setSelectedEmployee('');
   };
 
   return (
@@ -106,32 +210,109 @@ export default function Nominate() {
           </div>
         )}
 
+        {/* Error Message */}
+        {showError && (
+          <div className="glass-strong rounded-2xl p-6 border-2 border-red-500/50 shadow-xl shadow-red-500/30 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 rounded-full bg-red-500 flex items-center justify-center text-white font-bold">!</div>
+              <div>
+                <h3 className="font-semibold text-gray-900">Error</h3>
+                <p className="text-gray-600 text-sm">{errorMessage}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Nomination Form */}
         <form onSubmit={handleSubmit} className="glass-strong rounded-2xl p-8 shadow-xl space-y-6">
+          {/* Club Selection */}
+          <div>
+            <label className="block text-gray-600 text-sm font-medium mb-2">
+              Select Club
+            </label>
+            <div className="relative">
+              <select
+                value={selectedClub}
+                onChange={(e) => handleClubChange(e.target.value)}
+                className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-gray-900 text-lg appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                required
+              >
+                <option value="">Choose a club...</option>
+                {availableClubs.map((clubName) => (
+                  <option key={clubName} value={clubName}>
+                    {clubName}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Department Selection */}
+          <div>
+            <label className="block text-gray-600 text-sm font-medium mb-2">
+              Select Department
+            </label>
+            <div className="relative">
+              <select
+                value={selectedDepartment}
+                onChange={(e) => handleDepartmentChange(e.target.value)}
+                className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-gray-900 text-lg appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                required
+                disabled={!selectedClub}
+              >
+                <option value="">Choose a department...</option>
+                {availableDepartments.map((dept) => (
+                  <option key={dept} value={dept}>
+                    {dept}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600 pointer-events-none" />
+            </div>
+            {!selectedClub && (
+              <p className="text-gray-500 text-xs mt-1">
+                Please select a club first
+              </p>
+            )}
+          </div>
+
+          {/* Employee Selection */}
           <div>
             <label className="block text-gray-600 text-sm font-medium mb-2">
               Select Teammate
             </label>
             <div className="relative">
               <select
-                value={selectedTeammate}
-                onChange={(e) => setSelectedTeammate(e.target.value)}
-                className="w-full bg-emerald-50 border border-emerald-300 border border-emerald-200 rounded-xl px-4 py-3 text-gray-900 text-lg appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                value={selectedEmployee}
+                onChange={(e) => setSelectedEmployee(e.target.value)}
+                className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-gray-900 text-lg appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 required
+                disabled={!selectedDepartment}
               >
                 <option value="">Choose a teammate to nominate...</option>
-                {teammates
-                  .filter((t) => t.id !== user?.id)
-                  .map((teammate) => (
-                    <option key={teammate.id} value={teammate.id}>
-                      {teammate.full_name} - {teammate.role} {teammate.club?.name ? `(${teammate.club.name})` : ''}
-                    </option>
-                  ))}
+                {filteredEmployees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.full_name}
+                    {employee.job_title ? ` - ${employee.job_title}` : ''}
+                  </option>
+                ))}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600 pointer-events-none" />
             </div>
+            {!selectedDepartment && (
+              <p className="text-gray-500 text-xs mt-1">
+                Please select a department first
+              </p>
+            )}
+            {selectedDepartment && filteredEmployees.length === 0 && (
+              <p className="text-amber-600 text-xs mt-1">
+                No employees found for this department
+              </p>
+            )}
           </div>
 
+          {/* Core Value Selection */}
           <div>
             <label className="block text-gray-600 text-sm font-medium mb-2">
               Core Value
@@ -140,7 +321,7 @@ export default function Nominate() {
               <select
                 value={selectedValue}
                 onChange={(e) => setSelectedValue(e.target.value)}
-                className="w-full bg-emerald-50 border border-emerald-300 border border-emerald-200 rounded-xl px-4 py-3 text-gray-900 text-lg appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-gray-900 text-lg appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 required
               >
                 <option value="">Select an Evergreen value...</option>
@@ -154,6 +335,7 @@ export default function Nominate() {
             </div>
           </div>
 
+          {/* Description */}
           <div>
             <label className="block text-gray-600 text-sm font-medium mb-2">
               Why are you nominating this teammate?
@@ -163,7 +345,7 @@ export default function Nominate() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe how this teammate demonstrated this core value. Be specific about what they did and the impact it had..."
               rows={6}
-              className="w-full bg-emerald-50 border border-emerald-300 border border-emerald-200 rounded-xl px-4 py-3 text-gray-900 placeholder-emerald-600/70 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              className="w-full bg-emerald-50 border border-emerald-300 rounded-xl px-4 py-3 text-gray-900 placeholder-emerald-600/70 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
               required
             />
             <p className="text-gray-600/50 text-sm mt-2">
@@ -173,10 +355,10 @@ export default function Nominate() {
 
           <button
             type="submit"
-            disabled={loading || description.length < 50}
+            disabled={loading || submitting || description.length < 50}
             className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 px-8 py-4 rounded-2xl text-gray-900 text-lg font-semibold shadow-xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Submit Nomination
+            {submitting ? 'Submitting...' : 'Submit Nomination'}
           </button>
         </form>
 
